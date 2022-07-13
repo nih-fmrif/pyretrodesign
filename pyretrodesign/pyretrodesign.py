@@ -40,7 +40,8 @@ def pyretrodesign(A, s, alpha=0.05, df=np.inf, n_sims=10000, rng=None, make_plot
     est_df.loc[est_df.estimated < 0, 'Sign'] = 'Neg'
 
     if make_plots:
-
+        sign_palette = [sns.color_palette()[2], sns.color_palette()[1]]
+        exag_color = sns.color_palette()[1]
         if df is np.inf:
             dist = stats.norm(loc=A / s)
         else:

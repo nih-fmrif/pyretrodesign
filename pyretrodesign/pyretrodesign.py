@@ -7,37 +7,25 @@ from matplotlib import pyplot as plt
 
 
 def pyretrodesign(A, s, alpha=0.05, df=np.inf, n_sims=10000, rng=None, make_plots=False,
-                  plims=None, slims=None, elims=None):
+                  plims=None, slims=None, elims=None, fig=None, axes=None, context='notebook'):
+    if A < 0:
+        raise ValueError(f'A should be positive, you passed {A}.')
     if rng is None:
         # print(np.random.SeedSequence().entropy)
         # produced 217392773431744244676552396159683491339
         seed = 217392773431744244676552396159683491339
         rng = np.random.default_rng(seed)
-    z = stats.t.ppf(1 - (alpha / 2), df)
-    p_hi = 1 - stats.t.cdf(z - (A / s), df)
-    p_lo = stats.t.cdf(-z - (A / s), df)
-    power = p_hi + p_lo
-    if A > 0:
-        type_s = p_lo / power
-    else:
-        type_s = p_hi / power
-
-    # numpy standard_t doesn't seem to deal with infinite degrees of freedom correctly
-    # manually cludging this for now
     if df is np.inf:
-        estimate = A + (s * rng.standard_normal(n_sims))
+        z = stats.norm.ppf(1 - (alpha / 2))
+        p_hi = 1 - stats.norm.cdf(z - (A / s))
+        p_lo = stats.norm.cdf(-z - (A / s))
     else:
-        estimate = A + (s * rng.standard_t(df, n_sims))
-
-    significant = np.abs(estimate) > (s * z)
-    exaggeration = np.mean(np.abs(estimate)[significant]) / A
-
-    est_df = pd.DataFrame(estimate, columns=['estimated'])
-    est_df['Significant'] = significant
-    est_df['Exaggeration'] = np.abs(est_df.estimated) / A
-    est_df['Sign'] = np.nan
-    est_df.loc[est_df.estimated > 0, 'Sign'] = 'Pos'
-    est_df.loc[est_df.estimated < 0, 'Sign'] = 'Neg'
+        z = stats.t.ppf(1 - (alpha / 2), df)
+        p_hi = 1 - stats.t.cdf(z - (A / s), df)
+        p_lo = stats.t.cdf(-z - (A / s), df)
+    power = p_hi + p_lo
+    type_s = p_lo / power
+    exaggeration, ex_hi, ex_lo, ey_hi, ey_lo = _calc_exaggeration(A, s, df, alpha, power)
 
     if make_plots:
         sign_palette = [sns.color_palette()[2], sns.color_palette()[1]]
@@ -46,8 +34,8 @@ def pyretrodesign(A, s, alpha=0.05, df=np.inf, n_sims=10000, rng=None, make_plot
             dist = stats.norm(loc=A / s)
         else:
             dist = stats.t(df=df, loc=(A / s))
-        bottom_x = dist.ppf(0.001)
-        top_x = dist.ppf(0.9999)
+        bottom_x = dist.ppf(0.00001)
+        top_x = dist.ppf(0.99999)
         x_lo = np.linspace(bottom_x, -z, 1000)
         y_lo = dist.pdf(x_lo)
         x_med = np.linspace(-z, z, 1000)
@@ -55,9 +43,11 @@ def pyretrodesign(A, s, alpha=0.05, df=np.inf, n_sims=10000, rng=None, make_plot
         x_hi = np.linspace(z, top_x, 1000)
         y_hi = dist.pdf(x_hi)
 
-        with sns.plotting_context('talk'):
-
-            fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+        with sns.plotting_context(context):
+            if fig is None or axes is None:
+                fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+            else:
+                [ax.clear() for ax in axes]
             ax = axes[0]
             ax.fill_between(x_lo, y_lo, color=sns.color_palette()[1])
             ax.fill_between(x_med, y_med, color=sns.color_palette()[0])
@@ -83,14 +73,38 @@ def pyretrodesign(A, s, alpha=0.05, df=np.inf, n_sims=10000, rng=None, make_plot
                 ax.set_xlim(slims)
 
             ax = axes[2]
-            ax = sns.histplot(x='Exaggeration', data=est_df.query('Significant'), hue=est_df.Sign,
-                              element='step', multiple='stack', palette=sign_palette, hue_order=['Pos', 'Neg'], ax=ax)
+            ax.fill_between(ex_hi / A, ey_hi*A/power + ey_lo*A/power, color=sns.color_palette()[2], label='Pos')
+            ax.fill_between(np.abs(ex_lo / A), ey_lo*A/power, color=sns.color_palette()[1], label='Neg')
+            ax.legend(title='Sign')
             ax.set_title(f'Mean Exaggeration Ratio= {exaggeration:0.3f}')
             xlims = ax.get_xlim()
             ax.set_xlim((0, xlims[1]))
             ax.set_xlabel('Exaggeration Ratio')
             if elims is not None:
                 ax.set_xlim(elims)
-            fig.tight_layout()
+            if fig is None or axes is None:
+                fig.tight_layout()
 
-    return power, type_s, exaggeration, est_df
+    return power, type_s, exaggeration
+
+def _calc_exaggeration(A, s, df, alpha, power):
+    if df is np.inf:
+        dist = stats.norm(loc=A, scale = s)
+    else:
+        dist = stats.t(df=df, loc=(A ), scale = s)
+    bottom_x = dist.ppf(0.0001) * 2
+    top_x = dist.ppf(0.9999) * 2
+    z_plot = dist.ppf(1- (alpha / 2)) - A
+    x_lo = np.linspace(bottom_x, -z_plot, 10000)
+    x_hi = np.linspace(z_plot, top_x, 10000)
+    y_lo = dist.pdf(x_lo)
+    y_hi = dist.pdf(x_hi)
+    ext_hi = x_hi / A
+    eyt_hi = y_hi * A / power
+    ext_lo = np.abs(x_lo / A)
+    eyt_lo = y_lo * A / power
+    exaggeration = np.sum(ext_hi * eyt_hi)/ np.sum(eyt_hi) + np.sum(eyt_lo * eyt_lo)/ np.sum(eyt_lo)
+    # cludge for making the expectation figure
+    x_lo = -x_hi[x_hi < top_x / 2]
+    y_lo = dist.pdf(x_lo)
+    return exaggeration, x_hi[x_hi < top_x / 2], x_lo, y_hi[x_hi < top_x / 2], y_lo

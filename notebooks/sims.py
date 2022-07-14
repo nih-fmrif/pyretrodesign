@@ -35,7 +35,7 @@ rres = robjects.r('retrodesign(0.1, 3.28)')
 rpower = rres[0][0]
 rtype_s = rres[1][0]
 rexaggeration = rres[2][0]
-power, type_s, exaggeration, est_df = pyretrodesign(0.1, 3.28)
+power, type_s, exaggeration = pyretrodesign(0.1, 3.28)
 
 assert np.isclose(rpower, power)
 assert np.isclose(rtype_s, type_s)
@@ -46,7 +46,7 @@ rres = robjects.r('retrodesign(2, 8.1)')
 rpower = rres[0][0]
 rtype_s = rres[1][0]
 rexaggeration = rres[2][0]
-power, type_s, exaggeration, est_df = pyretrodesign(2, 8.1)
+power, type_s, exaggeration = pyretrodesign(2, 8.1)
 
 assert np.isclose(rpower, power)
 assert np.isclose(rtype_s, type_s)
@@ -71,12 +71,6 @@ z = stats.t.ppf(1 - (alpha / 2), df)
 p_hi = 1 - stats.t.cdf(z - (A/s), df)
 p_lo = stats.t.cdf(-z - (A/s), df)
 
-z
-
--z - (A/s)
-
-z - (A/s)
-
 # +
 x_lo = np.linspace(-5, -z, 1000)
 y_lo = stats.t.pdf(x_lo, df, loc=(A / s))  
@@ -88,7 +82,7 @@ y_hi = stats.t.pdf(x_hi, df, loc=(A / s))
 power = p_hi + p_lo
 type_s = p_lo / power
 
-
+# Note, this is how it's implemented in gelman, I don't use this approach any longer
 estimate = A + (s * rng.standard_t(df, n_sims))
 
 significant = np.abs(estimate) > (s * z)
@@ -140,89 +134,25 @@ with sns.plotting_context('talk'):
 
 A = 2.8
 s = 1
-power, type_s, exaggeration, est_df = pyretrodesign(A, s)
+power, type_s, exaggeration = pyretrodesign(A, s)
 power, type_s, exaggeration
 
-A = 2.8
-s = 1
-power, type_s, exaggeration, est_df = pyretrodesign(A, s)
-power, type_s, exaggeration
-
-power, type_s, exaggeration, est_df = pyretrodesign(0.5, 1, df=50, make_plots=True)
+power, type_s, exaggeration = pyretrodesign(0.5, 1, df=50, make_plots=True)
 
 
-power, type_s, exaggeration, est_df = pyretrodesign(0.5, 1, df=50, make_plots=True)
+power, type_s, exaggeration = pyretrodesign(0.5, 1, df=50, make_plots=True)
 
 
-power, type_s, exaggeration, est_df = pyretrodesign(A, s, make_plots=True)
+power, type_s, exaggeration = pyretrodesign(A, s, make_plots=True)
 
 
-power, type_s, exaggeration, est_df = pyretrodesign(0.1, 3.3, df=2971, make_plots=True, slims=(0,100), elims=(0,150))
+power, type_s, exaggeration = pyretrodesign(0.1, 3.3, df=2971, make_plots=True, slims=(0,100), elims=(0,150))
 
 
-power, type_s, exaggeration, est_df = pyretrodesign(0.3, 3.3, df=2971, make_plots=True, slims=(0,100), elims=(0,150))
+power, type_s, exaggeration = pyretrodesign(0.3, 3.3, df=2971, make_plots=True, slims=(0,100), elims=(0,150))
 
 
-power, type_s, exaggeration, est_df = pyretrodesign(3, 3.3, df=2971, make_plots=True, slims=(0,100), elims=(0,150))
+power, type_s, exaggeration = pyretrodesign(3, 3.3, df=2971, make_plots=True, slims=(0,100), elims=(0,150))
 
-
-# # Somewhat hacky code to make some widgets
-
-from ipywidgets import interact
-
-
-def widgetretrodesign(A, s, sims, alpha=0.05, df=np.inf):
-    z = stats.t.ppf(1 - (alpha / 2), df)
-    p_hi = 1 - stats.t.cdf(z - (A/s), df)
-    p_lo = stats.t.cdf(-z - (A/s), df)
-    power = p_hi + p_lo
-    if A > 0:
-        type_s = p_lo / power
-    else:
-        type_s = p_hi / power
-
-    # numpy standard_t doesn't seem to deal with infinite degrees of freedom correctly
-    # manually cludging this for now
-    estimate = A + (s * sims)
-
-    significant = np.abs(estimate) > (s * z)
-    if A != 0:
-        exaggeration = np.mean(np.abs(estimate)[significant]) / A
-    else:
-        exaggeration = np.nan
-    
-    est_df = pd.DataFrame(estimate, columns=['estimated'])
-    est_df['Significant'] = significant
-    est_df['Exaggeration'] = np.abs(est_df.estimated) / A
-
-    return power, type_s, exaggeration, est_df
-
-
-nsims=10000
-sims = rng.standard_t(2971, nsims)
-
-# +
-import matplotlib.ticker as ticker
-
-@ticker.FuncFormatter
-def pct_formatter(x, pos):
-    return f"{int(x/10000 * 100):d}%" 
-
-
-# -
-
-sign_palette = [sns.color_palette()[2], sns.color_palette()[3]]
-exag_color = sns.color_palette()[1]
-plims = (-15, 15)
-slims = (0, 500)
-elims = (0, 125)
-
-
-def update(A=1, s=1, alpha=0.05, df=100):
-    power, type_s, exaggeration, est_df = pyretrodesign(A, s, alpha, df=50, make_plots=True, plims=(-10,10))
-
-
-
-interact(update, A=(0, 5, 0.05), s=(0.1, 5, 0.05), alpha = (0.001, 0.5, 0.001), df=(5, 5000, 1));
 
 
